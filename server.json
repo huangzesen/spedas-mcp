@@ -1,0 +1,33 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.huangzesen/spedas-mcp",
+  "title": "SPEDAS MCP",
+  "description": "Unified SPEDAS-oriented MCP server combining XHelio CDAWeb and SPICE capabilities",
+  "repository": {
+    "url": "https://github.com/huangzesen/spedas-mcp",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "spedas-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "XHELIO_CDAWEB_CACHE_DIR",
+          "description": "Override the default CDAWeb cache directory (~/.cdawebmcp/)",
+          "required": false
+        },
+        {
+          "name": "XHELIO_SPICE_KERNEL_DIR",
+          "description": "Override the default SPICE kernel cache directory (~/.xhelio_spice/kernels/)",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

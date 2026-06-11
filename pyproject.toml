@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "spedas-mcp"
+version = "0.1.0"
+description = "Unified SPEDAS-oriented MCP server combining XHelio CDAWeb discovery/data access and SPICE ephemeris tools"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Zesen Huang" },
+]
+keywords = ["spedas", "heliophysics", "cdaweb", "spice", "mcp", "space-physics"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "xhelio-cdaweb>=0.3.7",
+    "xhelio-spice>=0.6.0",
+]
+
+[project.optional-dependencies]
+mcp = ["mcp>=1.26.0"]
+dev = [
+    "pytest>=7.0",
+    "mcp>=1.26.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/huangzesen/spedas-mcp"
+Repository = "https://github.com/huangzesen/spedas-mcp"
+Issues = "https://github.com/huangzesen/spedas-mcp/issues"
+
+[project.scripts]
+spedas-mcp = "spedas_mcp:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/spedas_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
