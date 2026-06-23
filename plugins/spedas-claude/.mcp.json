@@ -6,7 +6,7 @@
         "--with",
         "mcp>=1.26.0",
         "--from",
-        "git+https://github.com/huangzesen/spedas-mcp.git",
+        "git+https://github.com/spedas/spedas_mcp.git",
         "spedas-mcp"
       ],
       "env": {

@@ -39,9 +39,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/huangzesen/spedas-mcp"
-Repository = "https://github.com/huangzesen/spedas-mcp"
-Issues = "https://github.com/huangzesen/spedas-mcp/issues"
+Homepage = "https://github.com/spedas/spedas_mcp"
+Repository = "https://github.com/spedas/spedas_mcp"
+Issues = "https://github.com/spedas/spedas_mcp/issues"
 
 [project.scripts]
 spedas-mcp = "spedas_mcp:main"

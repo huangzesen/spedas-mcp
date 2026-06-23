@@ -14,7 +14,7 @@ It contributes:
 The packaged MCP definition still launches the shared `spedas-mcp` server:
 
 ```bash
-uvx --with 'mcp>=1.26.0' --from git+https://github.com/huangzesen/spedas-mcp.git spedas-mcp
+uvx --with 'mcp>=1.26.0' --from git+https://github.com/spedas/spedas_mcp.git spedas-mcp
 ```
 
 For local hacking before release, install this repo into the environment you use with Claude Code or edit `.mcp.json` to run `uv run --project /path/to/spedas-mcp --extra mcp spedas-mcp`.

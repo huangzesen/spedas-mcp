@@ -5,8 +5,8 @@
   "author": {
     "name": "Zesen Huang"
   },
-  "homepage": "https://github.com/huangzesen/spedas-mcp",
-  "repository": "https://github.com/huangzesen/spedas-mcp",
+  "homepage": "https://github.com/spedas/spedas_mcp",
+  "repository": "https://github.com/spedas/spedas_mcp",
   "license": "MIT",
   "keywords": [
     "spedas",
@@ -30,6 +30,6 @@
       "Data access",
       "Scientific workflow"
     ],
-    "websiteURL": "https://github.com/huangzesen/spedas-mcp"
+    "websiteURL": "https://github.com/spedas/spedas_mcp"
   }
 }
