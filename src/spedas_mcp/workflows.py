@@ -194,8 +194,72 @@ _LOOSE_TIME_RE = re.compile(
 _APPROX_WORDS = ("around", "near", "circa", "about", "approximately", "~")
 
 
+def _wind_is_mission(lowered: str) -> bool:
+    """Return ``True`` when bare ``wind`` refers to the Wind spacecraft.
+
+    Guards against the plasma phrase ``"solar wind"`` / ``"solar-wind"`` and
+    generic phrases like ``"wind speed"`` so a goal about the solar wind is not
+    misread as the Wind spacecraft.
+    """
+    return bool(
+        re.search(
+            r"(?<![a-z0-9])(?<!solar )(?<!solar-)wind(?![a-z0-9])"
+            r"(?!\s+(?:speed|velocity|direction|stream|streams|profile|data))",
+            lowered,
+        )
+    )
+
+
+def _extract_targets(text: str) -> list[str]:
+    """Return all canonical mission/target labels inferred from ``text``.
+
+    A multi-mission science goal ("compare ACE, Wind, and OMNI ...") names
+    several spacecraft; surfacing only the first match silently drops the rest
+    and breaks comparison workflows (T009). This returns every distinct mission
+    mentioned, in first-appearance (text-position) order, de-duplicated.
+
+    Matching is conservative and identical in spirit to ``_extract_target``:
+    keywords match on word boundaries so a short token like ``ace`` does not fire
+    inside ``"surface"``/``"space"``; bare ``wind`` only counts in spacecraft
+    phrasing (see ``_wind_is_mission``); and spacecraft whose short names are
+    everyday words (``solo``, ``cluster``) are only inferred from explicit
+    phrasing (see ``_QUALIFIED_MISSION_KEYWORDS``).
+    """
+    lowered = text.lower()
+    # Collect (position, label) so the result is ordered by first appearance.
+    hits: list[tuple[int, str]] = []
+    for pattern, label in _QUALIFIED_MISSION_KEYWORDS:
+        match = pattern.search(text)
+        if match is not None:
+            hits.append((match.start(), label))
+    for keyword, label in _MISSION_KEYWORDS:
+        if keyword == "wind":
+            match = re.search(
+                r"(?<![a-z0-9])(?<!solar )(?<!solar-)wind(?![a-z0-9])"
+                r"(?!\s+(?:speed|velocity|direction|stream|streams|profile|data))",
+                lowered,
+            )
+            if match is not None:
+                hits.append((match.start(), label))
+            continue
+        match = re.search(rf"(?<![a-z0-9]){re.escape(keyword)}(?![a-z0-9])", lowered)
+        if match is not None:
+            hits.append((match.start(), label))
+
+    ordered: list[str] = []
+    for _pos, label in sorted(hits, key=lambda item: item[0]):
+        if label not in ordered:
+            ordered.append(label)
+    return ordered
+
+
 def _extract_target(text: str) -> str | None:
-    """Return a canonical mission/target label inferred from ``text``.
+    """Return a single canonical mission/target label inferred from ``text``.
+
+    Back-compatible scalar wrapper: explicit, qualified spacecraft phrasing still
+    takes precedence over plain keywords, then the first mission keyword in
+    declaration order (matching the historical behaviour). Returns ``None`` when
+    no mission is recognised. For multi-mission goals use ``_extract_targets``.
 
     Matching is conservative: a keyword only matches on word boundaries so a
     short token like ``ace`` does not fire inside ``"surface"`` or ``"space"``.
@@ -214,11 +278,7 @@ def _extract_target(text: str) -> str | None:
         if keyword == "wind":
             # Match "wind" as a mission only in spacecraft phrasing, never inside
             # "solar wind"/"solar-wind" or generic phrases like "wind speed".
-            if re.search(
-                r"(?<![a-z0-9])(?<!solar )(?<!solar-)wind(?![a-z0-9])"
-                r"(?!\s+(?:speed|velocity|direction|stream|streams|profile|data))",
-                lowered,
-            ):
+            if _wind_is_mission(lowered):
                 return label
             continue
         if re.search(rf"(?<![a-z0-9]){re.escape(keyword)}(?![a-z0-9])", lowered):
@@ -450,6 +510,12 @@ def plan_observation(
     ``inferred`` key for transparency.
     """
     inferred: dict[str, str] = {}
+    # Every mission named in the goal, in first-appearance order. A multi-mission
+    # comparison goal ("compare ACE, Wind, and OMNI ...") names several
+    # spacecraft; surfacing only the first would silently drop Wind/OMNI and
+    # break the comparison (T009). An explicit ``target`` is kept first below so
+    # the scalar and the list always agree on element 0.
+    inferred_targets: list[str] = _extract_targets(science_goal) if science_goal else []
     if science_goal:
         if not start or not stop:
             extracted_start, extracted_stop = _extract_time_range(science_goal)
@@ -464,6 +530,13 @@ def plan_observation(
             if extracted_target:
                 target = extracted_target
                 inferred["target"] = extracted_target
+
+    # Ensure an explicit target leads the list and is never duplicated, so
+    # ``targets[0]`` and the scope ``target`` always agree.
+    if target:
+        targets = [target] + [m for m in inferred_targets if m != target]
+    else:
+        targets = list(inferred_targets)
 
     ranked = _ranked_sources(question=science_goal, target=target, observables=observables)
     requested_sources = [s.lower().replace("-", "_") for s in _as_list(data_sources)]
@@ -498,6 +571,7 @@ def plan_observation(
             "phase": "scope",
             "goal": science_goal,
             "target": target,
+            "targets": targets,
             "time_range": {"start": start, "stop": stop},
             "observables": _as_list(observables),
             "needs_user_input": needs_user_input,
@@ -552,6 +626,7 @@ def plan_observation(
         "plan": steps,
         "needs_user_input": needs_user_input,
         "inferred": inferred,
+        "inferred_targets": targets,
         "invalid_sources": invalid_sources,
         "time_range_warning": time_range_warning,
         "low_level_tools_remain_available": True,
