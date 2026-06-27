@@ -387,6 +387,101 @@ def test_plan_spedas_observation_does_not_infer_target_for_generic_wind():
 
 
 # ---------------------------------------------------------------------------
+# T009: multi-mission upstream comparison. A goal naming several spacecraft
+# (e.g. "compare ACE, Wind, and OMNI ...") must surface ALL of them, not just
+# the first match. The single-target path is preserved for back-compat; the
+# extra missions are reported additively so a comparison workflow does not
+# silently drop Wind/OMNI.
+# ---------------------------------------------------------------------------
+
+def test_extract_targets_returns_all_named_missions_in_order():
+    from spedas_mcp.workflows import _extract_targets
+
+    goal = (
+        "Compare ACE, Wind, and OMNI solar-wind magnetic field and plasma "
+        "upstream of Earth on 2015-10-16"
+    )
+    assert _extract_targets(goal) == ["ACE", "Wind", "OMNI"]
+
+
+def test_extract_targets_deduplicates_and_preserves_first_position():
+    from spedas_mcp.workflows import _extract_targets
+
+    # Repeated mentions collapse; first appearance order wins.
+    goal = "ACE vs Wind upstream; cross-check ACE against OMNI and Wind again"
+    assert _extract_targets(goal) == ["ACE", "Wind", "OMNI"]
+
+
+def test_extract_targets_single_mission_matches_extract_target():
+    from spedas_mcp.workflows import _extract_target, _extract_targets
+
+    goal = "Parker Solar Probe perihelion magnetic field on 2021-04-29"
+    assert _extract_targets(goal) == ["Parker Solar Probe"]
+    assert _extract_target(goal) == "Parker Solar Probe"
+
+
+def test_extract_targets_no_false_positive_for_generic_wind():
+    from spedas_mcp.workflows import _extract_targets
+
+    assert _extract_targets("characterise solar-wind speed near the bow shock") == []
+
+
+def test_extract_target_unchanged_returns_first_for_multimission():
+    # Back-compat: the scalar helper still returns the first match only.
+    from spedas_mcp.workflows import _extract_target
+
+    goal = "Compare ACE, Wind, and OMNI upstream solar wind on 2015-10-16"
+    assert _extract_target(goal) == "ACE"
+
+
+def test_plan_spedas_observation_reports_all_inferred_targets():
+    server = create_server()
+    data = json.loads(_call_tool(server, "plan_spedas_observation", {
+        "science_goal": (
+            "Compare ACE, Wind, and OMNI solar-wind magnetic field and plasma "
+            "upstream of Earth"
+        ),
+        "start": "2015-10-16T00:00:00Z",
+        "stop": "2015-10-18T00:00:00Z",
+    }))
+    assert data["status"] == "success"
+    # Scalar target preserved for back-compat (first match).
+    assert data["inferred"]["target"] == "ACE"
+    # New: every named mission is surfaced for the comparison.
+    assert data["inferred_targets"] == ["ACE", "Wind", "OMNI"]
+    scope = next(step for step in data["plan"] if step["phase"] == "scope")
+    assert scope["targets"] == ["ACE", "Wind", "OMNI"]
+
+
+def test_plan_spedas_observation_explicit_target_not_overridden_by_inference():
+    server = create_server()
+    data = json.loads(_call_tool(server, "plan_spedas_observation", {
+        "science_goal": "Compare ACE, Wind, and OMNI upstream solar wind",
+        "start": "2015-10-16T00:00:00Z",
+        "stop": "2015-10-18T00:00:00Z",
+        "target": "Wind",
+    }))
+    # An explicit target wins and is not inferred away...
+    assert data["plan"][0]["target"] == "Wind"
+    assert "target" not in data["inferred"]
+    # ...but the goal still names several missions, so they remain visible,
+    # with the explicit target leading the list.
+    assert data["inferred_targets"] == ["Wind", "ACE", "OMNI"]
+
+
+def test_plan_spedas_observation_single_target_has_singleton_targets_list():
+    server = create_server()
+    data = json.loads(_call_tool(server, "plan_spedas_observation", {
+        "science_goal": "Parker Solar Probe perihelion solar wind",
+        "start": "2021-04-29T00:00:00Z",
+        "stop": "2021-04-29T06:00:00Z",
+    }))
+    scope = next(step for step in data["plan"] if step["phase"] == "scope")
+    assert scope["target"] == "Parker Solar Probe"
+    assert scope["targets"] == ["Parker Solar Probe"]
+
+
+# ---------------------------------------------------------------------------
 # Issue #30 / zhipu-1 nice-to-have: a non-positive interval (start >= stop)
 # should be flagged rather than silently succeeding.
 # ---------------------------------------------------------------------------
