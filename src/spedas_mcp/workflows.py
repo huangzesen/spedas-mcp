@@ -44,6 +44,13 @@ SOURCE_PROFILES: dict[str, dict[str, Any]] = {
             # near-Earth nudge below adds the multi-word phrases.
             "magnetotail", "substorm", "injection", "reconnection", "aurora",
             "auroral", "electrojet", "ring current", "geomagnetic",
+            # Van Allen Probes (RBSP) is a CDAWeb-only inner-magnetosphere mission
+            # — its EMFISIS/MagEIS/REPT/HOPE/EFW/RBSPICE products live in CDAWeb,
+            # and (like MMS/Cluster) it has no SPICE kernels and no PDS bundles.
+            # ``_extract_target`` already canonicalises these phrases to "Van Allen
+            # Probes" (issue #30); the source router must agree so a radiation-belt
+            # goal routes to CDAWeb instead of falling back to "all sources equally".
+            "rbsp", "van allen", "van allen probes", "radiation belt",
         ],
     },
     "pds": {
@@ -79,6 +86,9 @@ SOURCE_PROFILES: dict[str, dict[str, Any]] = {
             # get_ephemeris. THEMIS A-E are the magnetospheric missions that do
             # have SPICE kernels (issue #26).
             "MMS/Cluster geometry (no SPICE kernels; use CDAWeb orbit products)",
+            # Van Allen Probes (RBSP) likewise has no SPICE kernels; its orbit
+            # comes from CDAWeb magnephem products, not get_ephemeris.
+            "Van Allen Probes/RBSP geometry (no SPICE kernels; use CDAWeb magnephem)",
         ],
         "discovery_tools": ["browse_data_sources(source_type=\"spice\")", "load_data_source(source_type=\"spice\", source_id=...)", "browse_data_parameters(source_type=\"spice\", dataset_id=...)"],
         "fetch_tools": ["get_ephemeris", "compute_distance", "transform_coordinates"],
@@ -320,7 +330,10 @@ def _extract_targets(text: str) -> list[str]:
             if match is not None:
                 hits.append((match.start(), label))
             continue
-        match = re.search(rf"(?<![a-z0-9]){re.escape(keyword)}(?![a-z0-9])", lowered)
+        # Use the shared keyword matcher so numbered/lettered probe phrasing
+        # ("MMS1", "rbspa", "themisa") is recognised in the list path exactly as
+        # in the scalar ``_extract_target`` (Batch V T007 + T009 reconciliation).
+        match = re.search(_mission_keyword_pattern(keyword), lowered)
         if match is not None:
             hits.append((match.start(), label))
 
