@@ -63,10 +63,17 @@ _ANALYSIS_REQUIRED_IMPORTS = (
     ("pyspedas.analysis.wave_signif", "wave_signif"),
     ("pyspedas.geopack", None),
     ("pyspedas.particles.moments", "moments_3d"),
-    ("pyspedas.particles.spd_part_products", "spd_pgs_make_e_spec"),
-    ("pyspedas.particles.spd_part_products", "spd_pgs_make_phi_spec"),
-    ("pyspedas.particles.spd_part_products", "spd_pgs_make_theta_spec"),
-    ("pyspedas.particles.spd_part_products", "spd_pgs_do_fac"),
+    # These spd_pgs_* helpers live in per-function SUBMODULES of
+    # spd_part_products (e.g. ...spd_part_products.spd_pgs_make_e_spec), not as
+    # attributes of the package itself, and are imported lazily — so probing the
+    # package with hasattr() returns False until the submodule is imported,
+    # which gated off ALL analysis tools even with [analysis] installed. Probe
+    # the submodule path directly, matching how analysis/particles.py imports
+    # them and how the other entries above target function-bearing modules.
+    ("pyspedas.particles.spd_part_products.spd_pgs_make_e_spec", "spd_pgs_make_e_spec"),
+    ("pyspedas.particles.spd_part_products.spd_pgs_make_phi_spec", "spd_pgs_make_phi_spec"),
+    ("pyspedas.particles.spd_part_products.spd_pgs_make_theta_spec", "spd_pgs_make_theta_spec"),
+    ("pyspedas.particles.spd_part_products.spd_pgs_do_fac", "spd_pgs_do_fac"),
 )
 
 
