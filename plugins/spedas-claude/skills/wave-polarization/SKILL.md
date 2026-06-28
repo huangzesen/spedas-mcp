@@ -25,11 +25,12 @@ obliquely-propagating circularly-polarized whistler — the spectral power alone
 `pyspedas.analysis.twavpol.twavpol(tvarname, prefix=..., nopfft=..., steplength=..., bin_freq=...)`:
 - **Input:** a single tplot variable holding an (N,3) vector time-series (the 3-component B).
 - **Returns:** `1` on success, `0` on failure (NOT the data — see the gotcha below).
-- **Stores** these tplot variables (retrieve with `get_data`), each an (n_time, n_freq) spectrogram unless noted:
+- **Stores** these tplot variables (retrieve with `get_data`), each an (n_time, n_freq) spectrogram:
   `{prefix}_powspec`, `{prefix}_degpol` (degree of polarization 0–1),
   `{prefix}_waveangle` (wave-normal angle, deg), `{prefix}_elliptict` (ellipticity, −1..1),
-  `{prefix}_helict` (helicity), `{prefix}_pspec3` ((n_time,n_freq,3)),
-  and `{prefix}_pspec3_x/_y/_z`.
+  `{prefix}_helict` (helicity), and the per-component wave power variables
+  `{prefix}_pspec3_x`, `{prefix}_pspec3_y`, `{prefix}_pspec3_z`.
+  `twavpol` does **not** store a combined `{prefix}_pspec3` tplot variable in current PySPEDAS; combine the three component variables yourself only if a downstream artifact needs a single `(n_time,n_freq,3)` array.
 
 ## Procedure
 
@@ -37,12 +38,13 @@ obliquely-propagating circularly-polarized whistler — the spectral power alone
 
 2. **Fetch 3-component B at adequate cadence.** Pick a magnetometer/search-coil dataset whose Nyquist covers the wave band (search-coil SCM for whistler/chorus; fluxgate for ULF/EMIC). Confirm the 3-vector variable with `browse_data_parameters`, then `fetch_data_product(... output_dir=<bundle>/data)`. **Cadence matters** exactly as in the turbulence skill — sub-second for chorus, seconds for ULF.
 
-3. **(Optional but recommended) field-aligned coordinates.** Wave-normal angle is physically meaningful relative to B0. Use `generate_fac_matrix` to build the FAC (Z-along-B) rotation and apply it so the input to twavpol is in field-aligned coords. For a quick look you can skip this and interpret angles relative to the input frame.
+3. **(Optional but recommended) field-aligned coordinates.** Wave-normal angle is physically meaningful relative to B0. Use `generate_fac_matrix` to build the FAC (Z-along-B) rotation, then apply that matrix stack with a small local script or a pre-rotated artifact so the input to twavpol is in field-aligned coords. For a quick look you can skip this and interpret angles relative to the input frame.
 
-4. **Run twavpol** (small local call, no dedicated MCP tool needed): load the 3-comp B as a tplot var, call `twavpol(var, prefix=...)`, then `get_data` each output and write them to `<bundle>/data/wavepol.npz` (keys `time`, `freq`, `degpol`, `waveangle`, `elliptict`, `helict`, `powspec`). Tune `nopfft` (FFT window length) / `steplength` / `bin_freq` for the time/frequency resolution you want.
+4. **Run twavpol** (small local call, no dedicated MCP tool needed): load the 3-comp B as a tplot var, call `twavpol(var, prefix=...)`, then `get_data` each output. Tune `nopfft` (FFT window length) / `steplength` / `bin_freq` for the time/frequency resolution you want.
    - **Gotcha (verified):** `twavpol` returns only a success bool; the results are the stored tplot variables, retrieved via `get_data('{prefix}_degpol')` etc. Do not expect the arrays back from the call itself.
+   - For durable artifacts, write one compact `.npz` per panel you intend to render, using standard spectrogram keys such as `time`, `freq`, and `spectrogram` (or `power` for power). Suggested files: `<bundle>/data/wavepol_powspec.npz`, `wavepol_degpol.npz`, `wavepol_waveangle.npz`, and `wavepol_elliptict.npz`. Keep optional component power files (`wavepol_pspec3_x.npz`, etc.) only if you need them.
 
-5. **Render.** `render_tplot(input_files=[<wavepol.npz panels>], output_file=<bundle>/plots/polarization.png, panel_types=["spectrogram",...], zlog=[...])`. Typical stack: power, degree-of-polarization, wave-normal angle, ellipticity.
+5. **Render.** `render_tplot(input_files=[<panel npz files>], output_file=<bundle>/plots/polarization.png, panel_types=["spectrogram",...], zlog=[...])`. `render_tplot` selects one 2-D matrix per `.npz`; do not put all panels into one multi-key `wavepol.npz` and expect a multi-panel stack. Typical stack: power, degree-of-polarization, wave-normal angle, ellipticity.
 
 6. **Interpret (the science).**
    - **Degree of polarization** ~1 → coherent polarized wave; low → random/turbulent. Only trust the other params where degpol is high.
@@ -59,4 +61,4 @@ obliquely-propagating circularly-polarized whistler — the spectral power alone
 - Stationary window: don't span a mode change or a boundary crossing in one twavpol call.
 
 ## Example (output contract verified live)
-On a synthetic circularly-polarized 3-component wave, `twavpol('B', prefix='B')` → returned `1` and stored `B_degpol`, `B_waveangle`, `B_elliptict`, `B_helict`, `B_powspec` (each (n_time,128)), `B_pspec3` ((n_time,128,3)) and `B_pspec3_{x,y,z}` — confirming the stored-tplot-variable retrieval contract this skill relies on.
+On a synthetic circularly-polarized 3-component wave, `twavpol('B', prefix='B')` → returned `1` and stored `B_degpol`, `B_waveangle`, `B_elliptict`, `B_helict`, `B_powspec`, plus component power variables `B_pspec3_x`, `B_pspec3_y`, and `B_pspec3_z` (each observed as `(n_time,128)` in the review smoke). It did **not** store `B_pspec3`; the stored-tplot-variable retrieval contract is per-variable/per-component.
