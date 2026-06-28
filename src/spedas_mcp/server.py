@@ -1235,6 +1235,7 @@ def create_server() -> FastMCP:
         ``spacecraft`` that is not SPICE-supported returns
         ``unsupported_spice_target`` (issue #26).
         """
+        import numpy as np
         from xhelio_spice import transform_vector
 
         # Only ``spacecraft`` is a body name; from_frame/to_frame are frames and
@@ -1249,10 +1250,11 @@ def create_server() -> FastMCP:
             return preflight
 
         result = transform_vector(vector, time, from_frame=from_frame, to_frame=to_frame, spacecraft=spacecraft)
+        output_vector = np.asarray(result, dtype=float).tolist()
         return _json({
             "status": "success",
             "input_vector": vector,
-            "output_vector": result,
+            "output_vector": output_vector,
             "from_frame": from_frame,
             "to_frame": to_frame,
             "time": time,
@@ -1384,23 +1386,24 @@ def create_server() -> FastMCP:
             return any(_payload_has_error(value) for value in payload)
         return False
 
-    def _translate_cdaweb_facade_guidance(raw: str) -> str:
-        """Rewrite CDAWeb backend how-to prose into the unified facade vocabulary.
+    def _translate_facade_guidance(raw: str, source_type: str) -> str:
+        """Rewrite backend how-to prose into the unified facade vocabulary.
 
-        CDAWeb observatory prompts are useful, but their embedded workflow text
-        names low-level compatibility tools (browse_parameters/fetch_data/
-        manage_cache). load_data_source is the primary facade entry point, so the
-        payload should keep agents on browse_data_parameters/fetch_data_product/
-        manage_data_cache (issue #66).
+        Backend prompts are useful, but their embedded workflow text can name
+        low-level compatibility tools (browse_parameters/fetch_data/manage_cache).
+        load_data_source is the primary facade entry point, so payload guidance
+        should keep agents on browse_data_parameters/fetch_data_product/
+        manage_data_cache with an explicit source_type (issues #66/#73).
         """
+        source = _normalize_source_type(source_type)
         replacements = {
-            "browse_parameters(dataset_id)": "browse_data_parameters(source_type=\"cdaweb\", dataset_id=...)",
-            "browse_parameters(dataset_id=dataset_id)": "browse_data_parameters(source_type=\"cdaweb\", dataset_id=dataset_id)",
-            "browse_parameters(dataset_id=...)": "browse_data_parameters(source_type=\"cdaweb\", dataset_id=...)",
-            "fetch_data(dataset_id, parameters, start, stop, output_dir)": "fetch_data_product(source_type=\"cdaweb\", dataset_id=..., parameters=..., start=..., stop=..., output_dir=...)",
-            "fetch_data(dataset_id=dataset_id, parameters=parameters, start=start, stop=stop, output_dir=output_dir)": "fetch_data_product(source_type=\"cdaweb\", dataset_id=dataset_id, parameters=parameters, start=start, stop=stop, output_dir=output_dir)",
-            "manage_cache(action=\"rebuild_catalog\")": "manage_data_cache(source_type=\"cdaweb\", action=\"status\")",
-            "manage_cache(action='rebuild_catalog')": "manage_data_cache(source_type=\"cdaweb\", action=\"status\")",
+            "browse_parameters(dataset_id)": f"browse_data_parameters(source_type=\"{source}\", dataset_id=...)",
+            "browse_parameters(dataset_id=dataset_id)": f"browse_data_parameters(source_type=\"{source}\", dataset_id=dataset_id)",
+            "browse_parameters(dataset_id=...)": f"browse_data_parameters(source_type=\"{source}\", dataset_id=...)",
+            "fetch_data(dataset_id, parameters, start, stop, output_dir)": f"fetch_data_product(source_type=\"{source}\", dataset_id=..., parameters=..., start=..., stop=..., output_dir=...)",
+            "fetch_data(dataset_id=dataset_id, parameters=parameters, start=start, stop=stop, output_dir=output_dir)": f"fetch_data_product(source_type=\"{source}\", dataset_id=dataset_id, parameters=parameters, start=start, stop=stop, output_dir=output_dir)",
+            "manage_cache(action=\"rebuild_catalog\")": f"manage_data_cache(source_type=\"{source}\", action=\"status\")",
+            "manage_cache(action='rebuild_catalog')": f"manage_data_cache(source_type=\"{source}\", action=\"status\")",
             "manage_cache": "manage_data_cache",
         }
         translated = raw
@@ -1408,10 +1411,26 @@ def create_server() -> FastMCP:
             translated = translated.replace(old_text, new_text)
         # Catch remaining bare function names without altering already translated
         # facade calls.
-        translated = re.sub(r"(?<!data_)\bbrowse_parameters\b", "browse_data_parameters", translated)
-        translated = re.sub(r"(?<!_)\bfetch_data\b", "fetch_data_product", translated)
-        translated = re.sub(r"\bmanage_cache\b", "manage_data_cache", translated)
+        translated = re.sub(
+            r"(?<!data_)\bbrowse_parameters\b(?!\s*\(source_type=)",
+            f"browse_data_parameters(source_type=\"{source}\", dataset_id=...)",
+            translated,
+        )
+        translated = re.sub(
+            r"(?<!_)\bfetch_data\b(?!_product)(?!\s*\(source_type=)",
+            f"fetch_data_product(source_type=\"{source}\", dataset_id=..., parameters=..., start=..., stop=..., output_dir=...)",
+            translated,
+        )
+        translated = re.sub(
+            r"\bmanage_cache\b(?!\s*\(source_type=)",
+            f"manage_data_cache(source_type=\"{source}\", action=\"status\")",
+            translated,
+        )
         return translated
+
+    def _translate_cdaweb_facade_guidance(raw: str) -> str:
+        """Backward-compatible wrapper for CDAWeb prompt translation."""
+        return _translate_facade_guidance(raw, "cdaweb")
 
 
     def _wrap_data_payload(source_type: str, raw: str, **extra: Any) -> str:
@@ -1763,7 +1782,7 @@ def create_server() -> FastMCP:
                 return invalid
             return _wrap_data_payload(
                 source,
-                load_pds_mission(normalized_source_id),
+                _translate_facade_guidance(load_pds_mission(normalized_source_id), "pds"),
                 source_id=source_id,
                 normalized_source_id=normalized_source_id,
             )
@@ -2353,20 +2372,23 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     @_safe_tool
-    def browse_hapi_catalog(server_url: str, query: str | None = None) -> str:
+    def browse_hapi_catalog(server_url: str, query: str | None = None, max_results: int | None = 500) -> str:
         """Data layer (HAPI): list datasets advertised by any HAPI-compliant server.
 
         Backend: hapiclient (optional spedas-mcp[hapi] extra). Works against
         CDAWeb, PDS-PPI, ISWA, LISIRD, and university HAPI servers. Pass the HAPI
         base URL (ends in /hapi), e.g. 'https://cdaweb.gsfc.nasa.gov/hapi';
-        optionally filter ids/titles with query. Returns
-        {status, server, dataset_count, datasets: [{id, title}...]}. Returns a
-        missing_dependency error (install spedas-mcp[hapi]) when hapiclient is
-        absent — base install and list_tools still work without it.
+        optionally filter ids/titles with query. ``max_results`` defaults to 500
+        so unfiltered large catalogs stay response-size safe. Returns
+        {status, server, dataset_count, total_dataset_count, datasets_truncated,
+        title_count, datasets}. ``title`` is present only when the server
+        provides it. Returns a missing_dependency error (install
+        spedas-mcp[hapi]) when hapiclient is absent — base install and list_tools
+        still work without it.
         """
         from spedas_mcp.datasources.hapi import browse_hapi_catalog as _impl
 
-        return _json(_impl(server_url=server_url, query=query))
+        return _json(_impl(server_url=server_url, query=query, max_results=max_results))
 
     @mcp.tool()
     @_safe_tool
