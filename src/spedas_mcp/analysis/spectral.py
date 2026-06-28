@@ -369,11 +369,17 @@ def wavelet_transform(
         )
 
     try:
-        scales, _freqs0, periods0 = idl_wavelet_scales(values.shape[0], dt)
+        # ``idl_wavelet_scales`` scales with the supplied cadence.  PyWavelets
+        # ``cwt`` expects dimensionless scales in sample units, so build the
+        # Torrence-Compo grid at ``dt=1`` for the transform itself and apply the
+        # physical cadence only to the returned period/frequency axes.  Passing
+        # second-valued scales directly to PyWavelets rejects otherwise-valid
+        # sub-minute cadence data with "Selected scale ... too small" (#82).
+        scales, _freqs0, periods0 = idl_wavelet_scales(values.shape[0], 1.0)
     except ValueError as exc:
         return _error(str(exc))
     scales = np.asarray(scales, dtype="float64")
-    periods0 = np.asarray(periods0, dtype="float64")
+    periods0 = np.asarray(periods0, dtype="float64") * dt
 
     # Restrict the scale grid to the requested period band before the (heavy)
     # CWT so we never compute scales the caller will discard.
@@ -391,6 +397,7 @@ def wavelet_transform(
             natural_period_range=[float(periods0.min()), float(periods0.max())],
         )
     scales = scales[keep]
+    periods0 = periods0[keep]
 
     coef, freqs = pywt.cwt(
         values,
@@ -400,6 +407,10 @@ def wavelet_transform(
         sampling_period=dt,
     )
     power = (np.abs(np.asarray(coef, dtype="float64")) ** 2).transpose()  # (n_time, n_scale)
+    # Keep the returned axes calibrated to the actual PyWavelets wavelet family.
+    # ``periods0`` above is the Torrence-Compo/Morlet period grid used for
+    # SPEDAS-style period-band filtering; PyWavelets returns wavelet-specific
+    # frequencies after applying ``sampling_period=dt``.
     freqs = np.asarray(freqs, dtype="float64")
     periods = np.where(freqs != 0, 1.0 / freqs, np.nan)
 
@@ -423,8 +434,11 @@ def wavelet_transform(
             )
         from pyspedas.analysis.wave_signif import wave_signif
 
+        # ``wave_signif`` follows the Torrence-Compo convention where scales
+        # carry the same physical units as ``dt``.
+        significance_scales = scales * dt
         signif, _outputs = wave_signif(
-            values, dt, scales, 0, siglvl=siglvl, mother=mother
+            values, dt, significance_scales, 0, siglvl=siglvl, mother=mother
         )
         signif = np.asarray(signif, dtype="float64")
         save_kwargs["significance"] = signif
