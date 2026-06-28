@@ -271,6 +271,75 @@ def test_eval_times_length_mismatch(tmp_path, monkeypatch):
     assert "times length" in out["message"]
 
 
+def test_eval_rejects_far_out_heliocentric_scale_positions_before_backend(
+    tmp_path, monkeypatch
+):
+    """Reject likely heliocentric/non-geocentric vectors instead of returning junk."""
+    # No fake pyspedas installed: this must fail on position domain before any
+    # backend import, so users get a coordinate/domain hint rather than a
+    # dependency or meaningless L~1000 style result.
+    pos = tmp_path / "heliocentric_scale.npz"
+    np.savez(
+        pos,
+        positions=np.array(
+            [[1.0e7, 0.0, 0.0], [0.0, 35.0 * fieldmodels.R_E_KM, 0.0]]
+        ),
+        times=np.array([1_600_000_000.0, 1_600_000_001.0]),
+    )
+
+    out = fieldmodels.evaluate_magnetic_field(
+        positions_file=str(pos),
+        output_file=str(tmp_path / "b.npz"),
+        model="igrf",
+    )
+
+    assert out["status"] == "error"
+    assert out["code"] == "position_domain_error"
+    assert out["max_allowed_radius_re"] == fieldmodels.FIELD_MODEL_MAX_RADIUS_RE
+    assert out["max_radius_re"] > fieldmodels.FIELD_MODEL_MAX_RADIUS_RE
+    assert "geocentric GSM" in out["hint"]
+    assert "heliocentric" in out["hint"]
+
+
+def test_lshell_rejects_far_out_positions_before_tracing(tmp_path):
+    pos = tmp_path / "far_out.npz"
+    np.savez(
+        pos,
+        positions=np.array([[31.0 * fieldmodels.R_E_KM, 0.0, 0.0]]),
+        times=np.array([1_600_000_000.0]),
+    )
+
+    out = fieldmodels.calculate_lshell(
+        positions_file=str(pos),
+        output_file=str(tmp_path / "l.npz"),
+    )
+
+    assert out["status"] == "error"
+    assert out["code"] == "position_domain_error"
+    assert out["invalid_sample_indices"] == [0]
+    assert not (tmp_path / "l.npz").exists()
+
+
+def test_eval_rejects_inside_earth_positions(tmp_path):
+    pos = tmp_path / "inside_earth.npz"
+    np.savez(
+        pos,
+        positions=np.array([[0.5 * fieldmodels.R_E_KM, 0.0, 0.0]]),
+        times=np.array([1_600_000_000.0]),
+    )
+
+    out = fieldmodels.evaluate_magnetic_field(
+        positions_file=str(pos),
+        output_file=str(tmp_path / "b.npz"),
+        model="igrf",
+    )
+
+    assert out["status"] == "error"
+    assert out["code"] == "position_domain_error"
+    assert out["min_radius_re"] < fieldmodels.FIELD_MODEL_MIN_RADIUS_RE
+    assert out["min_allowed_radius_re"] == fieldmodels.FIELD_MODEL_MIN_RADIUS_RE
+
+
 # --------------------------------------------------------------------------
 # Missing-extra guard
 # --------------------------------------------------------------------------

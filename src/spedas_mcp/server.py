@@ -2425,11 +2425,13 @@ def create_server() -> FastMCP:
     # ------------------------------------------------------------------
     # Analysis layer (Phase 2: magnetic field models & L-shell, issues #16/#17).
     # Same optional pyspedas (geopack) backend. File-in / file-out: the input is
-    # an Nx3 GSM positions artifact (preferably .npz with 'positions' and optional
-    # 'times'); per-sample B vectors / footpoints / L series are written to
-    # output_file as a compressed .npz and only summary stats plus paths are
-    # returned (artifact-first). IGRF is cheap and parameter-free; distorted
-    # Tsyganenko models require explicit parameters rather than hidden network I/O.
+    # an Nx3 geocentric GSM positions artifact (preferably .npz with 'positions'
+    # and optional 'times'); radii must be in the near-Earth 1..30 Re domain to
+    # catch heliocentric/planet-centered vectors before backend evaluation.
+    # Per-sample B vectors / footpoints / L series are written to output_file as a
+    # compressed .npz and only summary stats plus paths are returned
+    # (artifact-first). IGRF is cheap and parameter-free; distorted Tsyganenko
+    # models require explicit parameters rather than hidden network I/O.
     # ------------------------------------------------------------------
 
     @mcp.tool()
@@ -2447,12 +2449,14 @@ def create_server() -> FastMCP:
 
         Backend: pyspedas geopack tigrf/tt89/tt96/tt01/tts04 (field) and
         ttrace2endpoint (trace in {none, ionosphere, equator}). Reads a positions
-        artifact (.npz with 'positions' Nx3 in GSM km and optional 'times'; .npy;
-        or CSV/JSON), writes per-sample B (and any footpoints/L series) to
-        output_file as .npz, and returns the model, field_strength_nT min/max/mean,
-        paths, and (for equator traces) an lshell_summary only. IGRF is fast and
-        parameter-free; distorted models require explicit parameters (no hidden
-        network I/O). Requires spedas-mcp[analysis].
+        artifact (.npz with 'positions' Nx3 geocentric GSM km and optional
+        'times'; .npy; or CSV/JSON). Radii must be within 1..30 Re; out-of-domain
+        inputs return position_domain_error with a coordinate-conversion hint
+        instead of backend junk. Writes per-sample B (and any footpoints/L series)
+        to output_file as .npz, and returns the model, field_strength_nT
+        min/max/mean, paths, and (for equator traces) an lshell_summary only.
+        IGRF is fast and parameter-free; distorted models require explicit
+        parameters (no hidden network I/O). Requires spedas-mcp[analysis].
         """
         from spedas_mcp.analysis.fieldmodels import evaluate_magnetic_field as _impl
 
@@ -2482,10 +2486,13 @@ def create_server() -> FastMCP:
 
         Backend: pyspedas geopack ttrace2endpoint (trace to the magnetic equator;
         the equatorial foot radius in Re is L). Reads a positions artifact (.npz
-        with 'positions' Nx3 in GSM km and optional 'times'; .npy; or CSV/JSON),
-        writes the per-sample L series (and any ionospheric footprint when
-        footprint=True) to output_file as .npz, and returns the L summary
-        {min_L, max_L, mean_L} plus paths only. IGRF (default) is fast and
+        with 'positions' Nx3 geocentric GSM km and optional 'times'; .npy; or
+        CSV/JSON). Radii must be within 1..30 Re; out-of-domain inputs return
+        position_domain_error with a coordinate-conversion hint instead of
+        meaningless large L values. Writes the per-sample L series (and any
+        ionospheric footprint when footprint=True) to output_file as .npz, and
+        returns the L summary {min_L, max_L, mean_L} plus paths only. IGRF
+        (default) is fast and
         parameter-free; distorted models require geomag_parameters (no hidden
         network I/O). 'parameters' is accepted as an alias for 'geomag_parameters'
         (same name as evaluate_magnetic_field); supplying both with different

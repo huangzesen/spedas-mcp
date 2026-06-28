@@ -61,6 +61,14 @@ TRACE_TARGETS: dict[str, str | None] = {
 # Earth radius (km) used by geopack to convert km <-> Re.
 R_E_KM = 6371.2
 
+# These wrappers are for near-Earth magnetospheric field models in geocentric
+# GSM coordinates.  A 30 Re outer limit covers common inner/middle
+# magnetosphere, ring-current/radiation-belt, and many magnetopause-tail use
+# cases while catching heliocentric/SPICE vectors accidentally supplied as
+# Earth-centered GSM km (issue #85).
+FIELD_MODEL_MIN_RADIUS_RE = 1.0
+FIELD_MODEL_MAX_RADIUS_RE = 30.0
+
 
 def _error(
     message: str,
@@ -176,8 +184,9 @@ def _load_positions(
     - ``.csv`` / ``.json``: a time column plus three numeric position columns,
       matching the data-layer ``fetch_*`` artifact shapes.
 
-    Positions are interpreted as **GSM coordinates in km** (the geopack input
-    convention).
+    Positions are interpreted as **geocentric GSM coordinates in km** (the
+    geopack input convention). Field-model callers additionally reject radii
+    outside 1..30 Re to catch heliocentric or otherwise Earth-invalid inputs.
 
     Returns ``(unix_time_ndarray, nx3_position_ndarray)``.
 
@@ -310,6 +319,48 @@ def _finalize_positions(times: Any, positions: Any) -> tuple[Any, Any]:
     times = np.array(times, dtype="float64", copy=True)
     positions = np.array(positions, dtype="float64", copy=True)
     return times, positions
+
+
+def _position_domain_error(positions: Any) -> dict[str, Any] | None:
+    """Return a structured error if GSM positions are outside the tool domain.
+
+    The geopack wrappers expect geocentric GSM coordinates in km and are exposed
+    here for near-Earth magnetospheric use. Accidentally passing heliocentric
+    positions (for example SPICE Sun-centered vectors) can produce numerically
+    finite but physically meaningless field values or L shells. Reject obvious
+    out-of-domain radii before invoking the backend.
+    """
+    import numpy as np
+
+    radii_re = np.linalg.norm(np.asarray(positions, dtype="float64"), axis=1) / R_E_KM
+    min_radius = float(np.nanmin(radii_re))
+    max_radius = float(np.nanmax(radii_re))
+    bad_small = np.where(radii_re < FIELD_MODEL_MIN_RADIUS_RE)[0]
+    bad_large = np.where(radii_re > FIELD_MODEL_MAX_RADIUS_RE)[0]
+    if bad_small.size == 0 and bad_large.size == 0:
+        return None
+
+    examples = sorted(
+        set(int(i) for i in np.concatenate([bad_small[:3], bad_large[:3]]))
+    )
+    return _error(
+        "positions are outside the supported near-Earth field-model domain: "
+        f"radii must be between {FIELD_MODEL_MIN_RADIUS_RE:g} and "
+        f"{FIELD_MODEL_MAX_RADIUS_RE:g} Re from Earth's center; observed range "
+        f"is {min_radius:.3g}..{max_radius:.3g} Re",
+        code="position_domain_error",
+        hint=(
+            "Input positions must be geocentric GSM coordinates in km for an "
+            "Earth magnetospheric interval. If these are heliocentric/SPICE or "
+            "planet-centered vectors, first transform them to Earth-centered GSM "
+            "km or choose a heliophysics/planetary geometry tool instead."
+        ),
+        min_radius_re=min_radius,
+        max_radius_re=max_radius,
+        min_allowed_radius_re=FIELD_MODEL_MIN_RADIUS_RE,
+        max_allowed_radius_re=FIELD_MODEL_MAX_RADIUS_RE,
+        invalid_sample_indices=examples,
+    )
 
 
 def _vector_stats(array: Any) -> dict[str, Any]:
@@ -456,6 +507,19 @@ def evaluate_magnetic_field(
     if param_err is not None:
         return param_err
 
+    try:
+        import numpy as np
+
+        times, positions = _load_positions(
+            positions_file, time_col=time_col, position_cols=position_cols
+        )
+    except ValueError as exc:
+        return _error(str(exc))
+
+    domain_err = _position_domain_error(positions)
+    if domain_err is not None:
+        return domain_err
+
     # Resolve only the geopack APIs this call needs: the chosen model's wrapper,
     # plus ttrace2endpoint when tracing. A missing pyspedas yields
     # dependency_missing; an older pyspedas that lacks the specific entry points
@@ -477,15 +541,6 @@ def evaluate_magnetic_field(
         return _error(str(exc), code="backend_outdated", missing=exc.missing)
     except AnalysisDependencyError as exc:
         return _error(str(exc), code="dependency_missing")
-
-    try:
-        import numpy as np
-
-        times, positions = _load_positions(
-            positions_file, time_col=time_col, position_cols=position_cols
-        )
-    except ValueError as exc:
-        return _error(str(exc))
 
     from pyspedas import del_data, get_data, set_coords, set_units, store_data
 
@@ -642,6 +697,19 @@ def calculate_lshell(
     if param_err is not None:
         return param_err
 
+    try:
+        import numpy as np
+
+        times, positions = _load_positions(
+            positions_file, time_col=time_col, position_cols=position_cols
+        )
+    except ValueError as exc:
+        return _error(str(exc))
+
+    domain_err = _position_domain_error(positions)
+    if domain_err is not None:
+        return domain_err
+
     # L-shell always traces field lines, so ttrace2endpoint is mandatory here.
     # A missing pyspedas yields dependency_missing; an older pyspedas lacking
     # the tracer yields backend_outdated -- never a raw ImportError.
@@ -652,15 +720,6 @@ def calculate_lshell(
         return _error(str(exc), code="backend_outdated", missing=exc.missing)
     except AnalysisDependencyError as exc:
         return _error(str(exc), code="dependency_missing")
-
-    try:
-        import numpy as np
-
-        times, positions = _load_positions(
-            positions_file, time_col=time_col, position_cols=position_cols
-        )
-    except ValueError as exc:
-        return _error(str(exc))
 
     from pyspedas import del_data, get_data, set_coords, set_units, store_data
 
@@ -752,6 +811,8 @@ __all__ = [
     "FIELD_MODELS",
     "DISTORTED_MODELS",
     "TRACE_TARGETS",
+    "FIELD_MODEL_MIN_RADIUS_RE",
+    "FIELD_MODEL_MAX_RADIUS_RE",
     "GeopackVersionError",
     "evaluate_magnetic_field",
     "calculate_lshell",
