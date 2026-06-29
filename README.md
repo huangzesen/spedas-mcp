@@ -199,7 +199,7 @@ Phase-1 coordinate transforms and Phase-2 time-frequency analysis over fetched
 artifacts. These tools require the optional `analysis` extra
 (`pip install 'spedas-mcp[analysis]'`, which installs `pyspedas>=2.0` and
 `matplotlib`, and `PyWavelets`). `pyspedas`/`matplotlib`/`PyWavelets` are **not** part of the base install, and
-the ten analysis tools are registered with MCP only when those optional
+the analysis tools are registered with MCP only when their optional
 dependencies are importable. In a base install they are absent from `list_tools`;
 install `spedas-mcp[analysis]` before asking an MCP client to call them. They are
 file-in / file-out: inputs are paths to fetched CSV/JSON
@@ -238,17 +238,20 @@ tool `load_particle_distribution_artifact` runs a pyspedas mission loader/fetch 
 mappings include MMS FPI/HPCA and ERG particle products, with loader overrides available),
 selects the requested or best-effort distribution tplot variable, calls the same pyspedas
 mission converter, and writes the standard `.npz` distribution artifact. For already-loaded
-tplot variables, `build_particle_distribution_artifact` starts at the converter step. Both
-bridges require `magf` as either `[Bx,By,Bz]` or one
-vector per output slice so the artifact satisfies the same schema used by moments. It
-does not download data itself; load the mission data with pyspedas first, then bridge
-the distribution tplot variable. Both downstream tools read this **explicit
+tplot variables, `build_particle_distribution_artifact` starts at the converter step and
+does not download on its own. Both bridges require `magf` as either `[Bx,By,Bz]`
+or one vector per output slice so the artifact satisfies the same schema used by
+moments. Only `load_particle_distribution_artifact` performs the loader/fetch step,
+so any archive download/cache behavior comes from the requested pyspedas loader and
+is reported in the returned provenance. Both downstream tools read this **explicit
 distribution artifact** — an `.npz` (preferred) or JSON object holding per-time-slice
 energy/solid-angle cubes: `data` (T,E,A flux), `energy`/`denergy`/`theta`/`dtheta`/`phi`/`dphi`/`bins`
 (same shape as `data`, or a single `(E,A)` slice broadcast across time), the scalars
 `charge` and `mass`, and optional `times` (Unix seconds). This is the same `data_in`
 dict that `pyspedas`'s particle algorithms consume; mission CDF distributions can be
-bridged into it by a future loader (#20–#22). Bulk moment time series and spectrogram
+bridged into it either by `load_particle_distribution_artifact` (loader/fetch + converter)
+or by `build_particle_distribution_artifact` from an already loaded tplot variable. Bulk
+moment time series and spectrogram
 matrices are written to `output_dir`; only scalar summaries, paths, ranges, and shapes
 are returned (full pressure/temperature tensors, heat-flux cubes, and spectrogram
 matrices are never returned inline).

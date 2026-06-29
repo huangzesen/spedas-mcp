@@ -36,9 +36,10 @@ Design contract (mirrors :mod:`spedas_mcp.analysis.spectral` /
   every mission's CDF distribution struct, this module defines one explicit
   schema (see :data:`DIST_SCHEMA_DOC`) that maps 1:1 onto the ``data_in`` dict
   ``moments_3d`` / the ``spd_pgs_make_*`` functions consume. Mission CDFs can be
-  bridged into this schema by a future loader (#20-#22); the pyspedas algorithms
-  themselves run on the real arrays. Issue #95 adds the first pyspedas-backed
-  bridge from mission converter output into this schema.
+  bridged into this schema either by ``load_particle_distribution_artifact``
+  (loader/fetch plus converter) or by ``build_particle_distribution_artifact``
+  from already-loaded tplot variables; the pyspedas algorithms themselves run on
+  the real arrays.
 - **Lazy, gated backends.** ``pyspedas`` is imported only inside these
   functions; a missing ``[analysis]`` extra yields a clean
   ``status="error", code="dependency_missing"`` payload. Each pyspedas function
@@ -46,7 +47,11 @@ Design contract (mirrors :mod:`spedas_mcp.analysis.spectral` /
   ``pyspedas`` builds vary (e.g. ``spd_pgs_make_pad_spec`` is absent in some
   releases). A missing-but-required backend yields ``code="unsupported"`` rather
   than a raw ``ImportError``.
-- **No network.** All computation is local; the tools never download data.
+- **Artifact-first I/O with explicit loader side effects.** Most functions are
+  file/tplot-in and file-out, returning only compact summaries and artifact
+  paths. ``load_particle_distribution_artifact`` is the explicit exception that
+  may invoke a pyspedas mission loader/fetch; any archive download/cache behavior
+  is owned by that loader and reported in returned provenance.
 """
 
 from __future__ import annotations
