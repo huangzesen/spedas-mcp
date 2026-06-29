@@ -31,7 +31,6 @@ dependencies = [
     "pandas>=2.0",
     "requests>=2.28",
 
-    "xhelio-pds>=0.3.0",
     "xhelio-spice>=0.6.0",
 ]
 
