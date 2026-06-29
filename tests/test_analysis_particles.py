@@ -1113,6 +1113,70 @@ def test_load_particle_distribution_artifact_auto_loads_mag_tplot(tmp_path, monk
     assert calls["converter"] == [{"tname": "mms1_dis_dist_fast", "probe": "1"}]
     with np.load(out_file) as npz:
         np.testing.assert_allclose(npz["magf"], [[0.0, 0.0, 5.0], [0.0, 1.0, 5.0]])
+    sidecar = json.loads(Path(out["metadata_file"]).read_text())
+    assert sidecar["tool"] == "load_particle_distribution_artifact"
+    assert sidecar["loader_backend"] == "fake_particle_loader_auto_mag.fake_load"
+    assert sidecar["mag_loader_backend"] == "fake_mag_loader_auto_mag.fake_load_mag"
+    assert sidecar["loaded_tplot_names"] == ["mms1_dis_dist_fast"]
+    assert sidecar["loaded_mag_tplot_names"] == ["mms1_fgm_b_gse_srvy_l2"]
+
+
+def test_build_particle_distribution_rejects_mag_tplot_outside_time_range(tmp_path, monkeypatch):
+    base = 1_700_000_000.0
+
+    def fake_get_data(name):
+        return types.SimpleNamespace(
+            times=np.array([base + 10.0, base + 20.0]),
+            y=np.array([[1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]),
+        )
+
+    _install_fake_pyspedas(monkeypatch, get_data=fake_get_data)
+    mod = types.ModuleType("fake_dist_converter_outside_mag")
+
+    def fake_get_dist(tname):
+        return _fake_converter_records(2)
+
+    mod.fake_get_dist = fake_get_dist
+    monkeypatch.setitem(sys.modules, "fake_dist_converter_outside_mag", mod)
+    monkeypatch.setitem(
+        particles._DIST_CONVERTERS,
+        "fake_outside_mag",
+        ("fake_dist_converter_outside_mag", "fake_get_dist"),
+    )
+
+    out_file = tmp_path / "dist_outside_mag.npz"
+    out = particles.build_particle_distribution_artifact(
+        "mms1_dis_dist_fast",
+        str(out_file),
+        converter="fake_outside_mag",
+        mag_tplot_name="mms1_fgm_b_gse_srvy_l2",
+    )
+
+    assert out["status"] == "error"
+    assert out["code"] == "invalid_argument"
+    assert "does not bracket distribution times" in out["message"]
+    assert not out_file.exists()
+
+
+def test_load_particle_distribution_artifact_requires_loader_override_pairs(tmp_path):
+    out = particles.load_particle_distribution_artifact(
+        str(tmp_path / "partial_loader.npz"),
+        converter="mms_fpi",
+        loader_module="fake_loader_only",
+        magf=[0.0, 0.0, 1.0],
+    )
+    assert out["status"] == "error"
+    assert out["code"] == "invalid_argument"
+    assert "loader_module and loader_function" in out["message"]
+
+    out = particles.load_particle_distribution_artifact(
+        str(tmp_path / "partial_mag_loader.npz"),
+        converter="mms_fpi",
+        mag_loader_function="fake_mag_load_only",
+    )
+    assert out["status"] == "error"
+    assert out["code"] == "invalid_argument"
+    assert "mag_loader_module and mag_loader_function" in out["message"]
 
 
 def test_load_particle_distribution_artifact_reports_missing_mag_source(tmp_path, monkeypatch):

@@ -636,14 +636,20 @@ def _magf_from_tplot(tplot_name: str, target_times: Any) -> tuple[Any, dict[str,
         })
         return out, meta
 
-    out = np.column_stack([np.interp(target, source_times, mag[:, i]) for i in range(3)])
     outside = bool(np.any((target < source_times[0]) | (target > source_times[-1])))
+    if outside:
+        raise ValueError(
+            f"mag_tplot_name '{tplot_name}' time coverage {_finite_range(source_times)} "
+            f"does not bracket distribution times {_finite_range(target)}; pass a B-field "
+            "tplot/loader interval that covers every output slice"
+        )
+    out = np.column_stack([np.interp(target, source_times, mag[:, i]) for i in range(3)])
     same_grid = source_times.size == target.size and bool(np.allclose(source_times, target, rtol=0.0, atol=1e-9))
     meta.update({
         "n_source_samples": int(source_times.size),
         "source_time_range": _finite_range(source_times),
         "interpolated": not same_grid,
-        "outside_source_time_range": outside,
+        "outside_source_time_range": False,
     })
     return out, meta
 
@@ -730,7 +736,8 @@ def build_particle_distribution_artifact(
     The downstream distribution schema requires ``magf``. Supply it directly as
     one ``[Bx,By,Bz]`` vector or one vector per output slice, or pass
     ``mag_tplot_name`` for an already-loaded B-field tplot variable that will be
-    interpolated to the output slice times.
+    interpolated to the output slice times. The B-field time coverage must bracket
+    every output slice; the bridge does not silently extrapolate endpoint values.
     """
     import numpy as np
 
@@ -961,6 +968,18 @@ def load_particle_distribution_artifact(
         )
     if max_slices is not None and max_slices <= 0:
         return _error("max_slices must be positive or null")
+    if (loader_module is None) != (loader_function is None):
+        return _error(
+            "loader_module and loader_function must be provided together",
+            code="invalid_argument",
+            hint="Pass both loader_module and loader_function, or omit both to use the default loader mapping.",
+        )
+    if (mag_loader_module is None) != (mag_loader_function is None):
+        return _error(
+            "mag_loader_module and mag_loader_function must be provided together",
+            code="invalid_argument",
+            hint="Pass both mag_loader_module and mag_loader_function, or omit both to use the default magnetic-field loader mapping.",
+        )
     try:
         require_pyspedas()
         if loader_module is None or loader_function is None:
@@ -1061,6 +1080,13 @@ def load_particle_distribution_artifact(
         }
         if bridge.get("status") != "success":
             return {**bridge, **provenance}
+        metadata_file = bridge.get("metadata_file")
+        if metadata_file:
+            meta_path = Path(str(metadata_file))
+            if meta_path.exists():
+                sidecar = json.loads(meta_path.read_text(encoding="utf-8"))
+                sidecar.update({"tool": "load_particle_distribution_artifact", **provenance})
+                meta_path.write_text(json.dumps(sidecar, indent=2, default=str), encoding="utf-8")
         return {**bridge, "tool": "load_particle_distribution_artifact", **provenance}
     except AnalysisDependencyError as exc:
         return _error(
