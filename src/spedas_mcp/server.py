@@ -1462,7 +1462,7 @@ def create_server(*, include_analysis_tools: bool | None = None) -> FastMCP:
     @_compat_tool
     def browse_pds_missions(query: str | None = None) -> str:
         """Compatibility: list PDS PPI missions. Prefer browse_data_sources(source_type="pds") for new workflows."""
-        from pdsmcp.catalog import browse_missions as _browse_missions
+        from spedas_mcp.backends.pds.catalog import browse_missions as _browse_missions
 
         return _json(_browse_missions(query=query))
 
@@ -1470,14 +1470,14 @@ def create_server(*, include_analysis_tools: bool | None = None) -> FastMCP:
     @_safe_tool
     def load_pds_mission(mission_id: str) -> str:
         """Compatibility: load PDS mission context. Prefer load_data_source(source_type="pds", source_id=...)."""
-        from pdsmcp.prompts import build_mission_prompt
+        from spedas_mcp.backends.pds.prompts import build_mission_prompt
 
         return build_mission_prompt(mission_id)
 
     @_compat_tool
     def browse_pds_parameters(dataset_id: str | None = None, dataset_ids: list[str] | None = None) -> str:
         """Compatibility: browse PDS variables. Prefer browse_data_parameters(source_type="pds", ...)."""
-        from pdsmcp.metadata import browse_parameters as _browse_parameters
+        from spedas_mcp.backends.pds.metadata import browse_parameters as _browse_parameters
 
         return _json(_browse_parameters(dataset_id=dataset_id, dataset_ids=dataset_ids))
 
@@ -1495,7 +1495,7 @@ def create_server(*, include_analysis_tools: bool | None = None) -> FastMCP:
         import re
 
         import pandas as pd
-        from pdsmcp.fetch import fetch_data as _fetch_data
+        from spedas_mcp.backends.pds.fetch import fetch_data as _fetch_data
 
         time_error = _validate_fetch_time_range(start, stop, source_type="pds")
         if time_error is not None:
@@ -1797,7 +1797,7 @@ def create_server(*, include_analysis_tools: bool | None = None) -> FastMCP:
         force: bool = False,
     ) -> str:
         """Compatibility: manage PDS cache. Prefer manage_data_cache(source_type="pds", ...)."""
-        from pdsmcp.cache import build_metadata, cache_clean, cache_status, refresh_metadata, refresh_time_ranges, rebuild_catalog
+        from spedas_mcp.backends.pds.cache import build_metadata, cache_clean, cache_status, refresh_metadata, refresh_time_ranges, rebuild_catalog
 
         if action == "status":
             return _json(cache_status(detail=detail))
@@ -3280,7 +3280,7 @@ def serve() -> None:
 
     pds_cache_dir = args.pds_cache_dir or os.environ.get("PDSMCP_CACHE_DIR")
     if pds_cache_dir:
-        from pdsmcp.config import configure as configure_pds
+        from spedas_mcp.backends.pds.config import configure as configure_pds
         configure_pds(cache_dir=pds_cache_dir)
 
     logging.basicConfig(level=logging.INFO)

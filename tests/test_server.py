@@ -388,7 +388,7 @@ def test_load_data_source_cdaweb_translates_backend_guidance_to_facade(monkeypat
 
 
 def test_load_data_source_pds_translates_backend_guidance_to_facade(monkeypatch):
-    import pdsmcp.prompts as prompts
+    import spedas_mcp.backends.pds.prompts as prompts
 
     def _fake_prompt(mission_id: str) -> str:
         return (
@@ -559,7 +559,7 @@ def test_fetch_data_product_shapes_cdaweb_no_data_codes(monkeypatch, tmp_path: P
 
 
 def test_fetch_data_product_rejects_bad_times_before_pds_backend(monkeypatch, tmp_path: Path):
-    import pdsmcp.fetch as fetch_mod
+    import spedas_mcp.backends.pds.fetch as fetch_mod
 
     called = False
 
@@ -637,7 +637,7 @@ def test_unified_cache_manager_passes_pds_and_spice_kwargs(monkeypatch):
         refresh_time_ranges=lambda mission=None: {"status": "success"},
         rebuild_catalog=lambda mission=None: {"status": "success"},
     )
-    monkeypatch.setitem(sys.modules, "pdsmcp.cache", pds_cache_mod)
+    monkeypatch.setitem(sys.modules, "spedas_mcp.backends.pds.cache", pds_cache_mod)
 
     spice_mod = types.SimpleNamespace(
         check_remote_kernels=lambda mission=None: {"status": "success"},
